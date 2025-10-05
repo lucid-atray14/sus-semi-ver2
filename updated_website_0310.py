@@ -51,22 +51,18 @@ def load_bandgap_database():
 @st.cache_data
 def filter_dataframe(_df, filters, selected_names=None):
     """Filter dataframe based on provided filters and optional names"""
-    bandgap_range = filters.get("Bandgap", (_df["Bandgap"].min(), _df["Bandgap"].max()))
-    esg_range = filters.get("ESG Score", (_df["ESG Score"].min(), _df["ESG Score"].max()))
-    toxicity_range = filters.get("Toxicity", (_df["Toxicity"].min(), _df["Toxicity"].max()))
-    co2_range = filters.get("CO2 footprint max (kg/kg)", 
-                          (_df["CO2 footprint max (kg/kg)"].min(), 
-                           _df["CO2 footprint max (kg/kg)"].max()))
+    filtered = _df.copy()
     
-    filtered = _df[
-        _df["Bandgap"].between(bandgap_range[0], bandgap_range[1], inclusive='both') &
-        _df["ESG Score"].between(esg_range[0], esg_range[1], inclusive='both') &
-        _df["Toxicity"].between(toxicity_range[0], toxicity_range[1], inclusive='both') &
-        _df["CO2 footprint max (kg/kg)"].between(co2_range[0], co2_range[1], inclusive='both')
-    ]
+    # Apply each filter dynamically
+    for filter_name, filter_range in filters.items():
+        if filter_name in _df.columns:
+            filtered = filtered[
+                filtered[filter_name].between(filter_range[0], filter_range[1], inclusive='both')
+            ]
     
     if selected_names is not None:
         filtered = filtered[filtered["Name"].isin(selected_names)]
+    
     return filtered
 
 @st.cache_data
@@ -396,63 +392,78 @@ def main():
             """)
 
     elif selected_page == "Custom Analysis":
-            st.title("🔍 Custom Analysis")
-            st.markdown("Explore relationships between any material properties")
+        st.title("🔍 Custom Analysis")
+        st.markdown("Explore relationships between any material properties")
+        
+        # Initialize session state
+        if 'filters' not in st.session_state:
+            st.session_state.filters = {}
+        if 'show_additional_filters' not in st.session_state:
+            st.session_state.show_additional_filters = False
+        if 'initial_filter_name' not in st.session_state:
+            st.session_state.initial_filter_name = None
+        if 'second_graph_filters' not in st.session_state:
+            st.session_state.second_graph_filters = set()
+        
+        with st.expander("🔧 Filter Settings", expanded=True):
+            cols = st.columns(2)
             
-            # Initialize session state
-            if 'filters' not in st.session_state:
-                st.session_state.filters = {}
-            if 'show_additional_filters' not in st.session_state:
-                st.session_state.show_additional_filters = False
-            
-            with st.expander("🔧 Filter Settings", expanded=True):
-                cols = st.columns(2)
-                
-                with cols[0]:
-                    st.subheader("Bandgap Selection")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        bandgap_min = st.number_input(
-                            "Min (eV)",
-                            min_value=0.0,
-                            max_value=20.0,
-                            value=0.0,
-                            step=0.1,
-                            key="bandgap_min"
-                        )
-                    with col2:
-                        bandgap_max = st.number_input(
-                            "Max (eV)",
-                            min_value=0.0,
-                            max_value=20.0,
-                            value=3.0,
-                            step=0.1,
-                            key="bandgap_max"
-                        )
+            with cols[0]:
+                st.subheader("Bandgap Selection")
+                col1, col2 = st.columns(2)
+                with col1:
+                    bandgap_min = st.number_input(
+                        "Min (eV)",
+                        min_value=0.0,
+                        max_value=20.0,
+                        value=0.0,
+                        step=0.1,
+                        key="bandgap_min"
+                    )
+                with col2:
+                    bandgap_max = st.number_input(
+                        "Max (eV)",
+                        min_value=0.0,
+                        max_value=20.0,
+                        value=3.0,
+                        step=0.1,
+                        key="bandgap_max"
+                    )
 
-                    # Optional: Add validation to ensure min <= max
-                    if bandgap_min > bandgap_max:
-                        st.error("Minimum bandgap must be less than or equal to maximum bandgap")
-                        
-                    bandgap_range = (bandgap_min, bandgap_max)
+                # Optional: Add validation to ensure min <= max
+                if bandgap_min > bandgap_max:
+                    st.error("Minimum bandgap must be less than or equal to maximum bandgap")
+                    
+                bandgap_range = (bandgap_min, bandgap_max)
+            
+            with cols[1]:
+                st.subheader("Additional Filter")
+                filter_options = [
+                    'Reserve (ton)', 'Production (ton)', 'HHI (USGS)',
+                    'ESG Score', 'CO2 footprint max (kg/kg)', 
+                    'Embodied energy max (MJ/kg)', 'Water usage max (l/kg)', 
+                    'Toxicity', 'Companionality'
+                ]
                 
-                with cols[1]:
-                    st.subheader("Additional Filter")
-                    filter_options = [
-                        'Reserve (ton)', 'Production (ton)', 'HHI (USGS)',
-                        'ESG Score', 'CO2 footprint max (kg/kg)', 
-                        'Embodied energy max (MJ/kg)', 'Water usage max (l/kg)', 
-                        'Toxicity', 'Companionality'
-                    ]
+                selected_filter = st.selectbox("Choose a filter", filter_options, key="selected_filter")
+                
+                # Show slider only after a filter is selected
+                if selected_filter:
+                    # Get min and max values for the selected filter
+                    filter_min = float(df[selected_filter].min())
+                    filter_max = float(df[selected_filter].max())
                     
-                    selected_filter = st.selectbox("Choose a filter", filter_options, key="selected_filter")
-                    
-                    # Show slider only after a filter is selected
-                    if selected_filter:
-                        # Get min and max values for the selected filter
-                        filter_min = float(df[selected_filter].min())
-                        filter_max = float(df[selected_filter].max())
-                        
+                    # Integer slider for Toxicity
+                    if selected_filter == 'Toxicity':
+                        filter_range = st.slider(
+                            f"{selected_filter} Range",
+                            int(filter_min),
+                            int(filter_max),
+                            (int(filter_min), int(filter_max)),
+                            step=1,
+                            key="initial_filter_slider"
+                        )
+                    else:
                         filter_range = st.slider(
                             f"{selected_filter} Range",
                             filter_min,
@@ -460,119 +471,226 @@ def main():
                             (filter_min, filter_max),
                             key="initial_filter_slider"
                         )
-                    else:
-                        filter_range = None
-                
-                if st.button("Apply Initial Filters", key="apply_initial_filter"):
-                    if filter_range is not None:
-                        st.session_state.filters.update({
-                            "Bandgap": bandgap_range,
-                            selected_filter: filter_range
-                        })
-                        st.session_state.show_additional_filters = True
-                        st.success("Initial filters applied!")
-                    else:
-                        st.warning("Please select an additional filter and set its range.")
-            
-            if st.session_state.filters:  # Check if any filters exist
-                # Plot configuration - first graph is always Bandgap vs selected filter
-                st.subheader("📊 Plot Configuration")
-                
-                # Get the selected filter from session state (the one that was chosen initially)
-                initial_filters = [k for k in st.session_state.filters.keys() if k != 'Bandgap']
-                
-                if initial_filters:
-                    # First plot: Bandgap vs the initially selected filter
-                    x_col = 'Bandgap'
-                    y_col = initial_filters[0]
-                    
-                    st.info(f"Initial plot: **Bandgap** vs **{y_col}**")
-                    
-                    cols = st.columns(2)
-                    with cols[0]:
-                        log_x = st.checkbox(f"Log scale X-axis (Bandgap)")
-                    with cols[1]:
-                        log_y = st.checkbox(f"Log scale Y-axis ({y_col})")
                 else:
-                    # Fallback if somehow no initial filter was selected
-                    cols = st.columns(2)
-                    with cols[0]:
-                        x_col = st.selectbox("X-Axis", [col for col in df.columns if col != 'Name'])
-                        log_x = st.checkbox(f"Log scale X-axis")
-                    with cols[1]:
-                        y_col = st.selectbox("Y-Axis", [col for col in df.columns if col not in ['Name', x_col]])
-                        log_y = st.checkbox(f"Log scale Y-axis")
+                    filter_range = None
+            
+            if st.button("Apply Initial Filters", key="apply_initial_filter"):
+                if filter_range is not None:
+                    # Clear previous filters and reset
+                    st.session_state.filters = {
+                        "Bandgap": bandgap_range,
+                        selected_filter: filter_range
+                    }
+                    st.session_state.initial_filter_name = selected_filter
+                    st.session_state.show_additional_filters = True
+                    st.session_state.show_second_graph = False  # Reset second graph
+                    st.success("Initial filters applied!")
+                    st.rerun()
+                else:
+                    st.warning("Please select an additional filter and set its range.")
+        
+        if st.session_state.filters:  # Check if any filters exist
+            # Plot configuration - first graph is always Bandgap vs selected filter
+            st.subheader("📊 Plot Configuration")
+            
+            # Get the selected filter from session state (the one that was chosen initially)
+            initial_filters = [k for k in st.session_state.filters.keys() if k != 'Bandgap']
+            
+            if initial_filters:
+                # First plot: Bandgap vs the initially selected filter
+                x_col = 'Bandgap'
+                y_col = initial_filters[0]
                 
-                # Apply filters and create plot
-                filtered_df = filter_dataframe(df, st.session_state.filters)
+                st.info(f"Initial plot: **Bandgap** vs **{y_col}**")
                 
-                if not filtered_df.empty:
-                    st.success(f"🔄 {len(filtered_df)} materials match current filters")
+                log_x = False  # Bandgap is never on log scale
+                log_y = st.checkbox(f"Log scale Y-axis ({y_col})")
+            else:
+                # Fallback if somehow no initial filter was selected
+                cols = st.columns(2)
+                with cols[0]:
+                    x_col = st.selectbox("X-Axis", [col for col in df.columns if col != 'Name'])
+                    log_x = st.checkbox(f"Log scale X-axis")
+                with cols[1]:
+                    y_col = st.selectbox("Y-Axis", [col for col in df.columns if col not in ['Name', x_col]])
+                    log_y = st.checkbox(f"Log scale Y-axis")
+            
+            # Apply filters and create plot
+            filtered_df = filter_dataframe(df, st.session_state.filters)
+            
+            if not filtered_df.empty:
+                st.success(f"🔄 {len(filtered_df)} materials match current filters")
+                
+                # Advanced options
+                with st.expander("🎨 Customization Options"):
+                    plot_title = st.text_input("Plot Title", f"{x_col} vs {y_col}")
+                
+                # Create professional plot with random highlighting
+                p = create_professional_plot(
+                    filtered_df, x_col, y_col, plot_title, x_col, y_col, log_x, log_y
+                )
+                
+                # Set axis ranges to match filtered data with padding
+                from bokeh.models import Range1d
+                if not log_x:
+                    x_min, x_max = filtered_df[x_col].min(), filtered_df[x_col].max()
+                    x_padding = (x_max - x_min) * 0.05
+                    p.x_range = Range1d(x_min - x_padding, x_max + x_padding)
+                if not log_y:
+                    y_min, y_max = filtered_df[y_col].min(), filtered_df[y_col].max()
+                    y_padding = (y_max - y_min) * 0.05
+                    p.y_range = Range1d(y_min - y_padding, y_max + y_padding)
+                
+                st.bokeh_chart(p, use_container_width=True)
+                
+                # Show additional filters after graph is drawn
+                if st.session_state.show_additional_filters:
+                    st.markdown("---")
+                    with st.expander("🔧 Choose 2 Additional Filters for Second Graph", expanded=True):
+                        st.info("Select 2 filters to create axes for the second graph. Results from the first graph will be used.")
+                        
+                        # Get all available filters
+                        all_filters = [
+                            'Reserve (ton)', 'Production (ton)', 'HHI (USGS)',
+                            'ESG Score', 'CO2 footprint max (kg/kg)', 
+                            'Embodied energy max (MJ/kg)', 'Water usage max (l/kg)', 
+                            'Toxicity', 'Companionality', 'Bandgap'
+                        ]
+                        
+                        # Only exclude the initial filter that was already applied, keep everything else available
+                        available_filters = [f for f in all_filters if f != st.session_state.initial_filter_name]
+                        
+                        cols = st.columns(2)
+                        
+                        with cols[0]:
+                            filter_1 = st.selectbox("First filter (X-axis)", available_filters, key="filter_1_select")
+                            if filter_1:
+                                filter_1_min = float(df[filter_1].min())
+                                filter_1_max = float(df[filter_1].max())
+                                
+                                # Integer slider for Toxicity
+                                if filter_1 == 'Toxicity':
+                                    filter_1_range = st.slider(
+                                        f"{filter_1} Range",
+                                        int(filter_1_min),
+                                        int(filter_1_max),
+                                        (int(filter_1_min), int(filter_1_max)),
+                                        step=1,
+                                        key="filter_1_slider"
+                                    )
+                                else:
+                                    filter_1_range = st.slider(
+                                        f"{filter_1} Range",
+                                        filter_1_min,
+                                        filter_1_max,
+                                        (filter_1_min, filter_1_max),
+                                        key="filter_1_slider"
+                                    )
+                        
+                        with cols[1]:
+                            # Exclude filter_1 from second dropdown
+                            available_for_filter_2 = [f for f in available_filters if f != filter_1]
+                            filter_2 = st.selectbox("Second filter (Y-axis)", available_for_filter_2, key="filter_2_select")
+                            if filter_2:
+                                filter_2_min = float(df[filter_2].min())
+                                filter_2_max = float(df[filter_2].max())
+                                
+                                # Integer slider for Toxicity
+                                if filter_2 == 'Toxicity':
+                                    filter_2_range = st.slider(
+                                        f"{filter_2} Range",
+                                        int(filter_2_min),
+                                        int(filter_2_max),
+                                        (int(filter_2_min), int(filter_2_max)),
+                                        step=1,
+                                        key="filter_2_slider"
+                                    )
+                                else:
+                                    filter_2_range = st.slider(
+                                        f"{filter_2} Range",
+                                        filter_2_min,
+                                        filter_2_max,
+                                        (filter_2_min, filter_2_max),
+                                        key="filter_2_slider"
+                                    )
+                        
+                        if filter_1 and filter_2 and st.button("Create Second Graph", key="create_second_graph"):
+                            # Remove old second graph filters from session state
+                            for old_filter in st.session_state.second_graph_filters:
+                                if old_filter in st.session_state.filters:
+                                    del st.session_state.filters[old_filter]
+                            
+                            # Apply these two new filters
+                            st.session_state.filters.update({
+                                filter_1: filter_1_range,
+                                filter_2: filter_2_range
+                            })
+                            st.session_state.show_second_graph = True
+                            st.session_state.second_graph_x = filter_1
+                            st.session_state.second_graph_y = filter_2
+                            st.session_state.second_graph_filters = {filter_1, filter_2}
+                            st.success("Second graph filters applied!")
+                            st.rerun()
                     
-                    # Advanced options
-                    with st.expander("🎨 Customization Options"):
-                        plot_title = st.text_input("Plot Title", f"{x_col} vs {y_col}")
-                    
-                    # Create professional plot with random highlighting
-                    p = create_professional_plot(
-                        filtered_df, x_col, y_col, plot_title, x_col, y_col, log_x, log_y
-                    )
-                    
-                    st.bokeh_chart(p, use_container_width=True)
-                    
-                    # Show additional filters after graph is drawn
-                    if st.session_state.show_additional_filters:
+                    # Second Graph - only show after filters are chosen
+                    if 'show_second_graph' in st.session_state and st.session_state.show_second_graph:
                         st.markdown("---")
-                        with st.expander("🔧 More Filters", expanded=False):
-                            st.info("Refine your results with additional filters")
-                            
-                            # Get all available filters excluding the ones already applied
-                            all_filters = [
-                                'Reserve (ton)', 'Production (ton)', 'HHI (USGS)',
-                                'ESG Score', 'CO2 footprint max (kg/kg)', 
-                                'Embodied energy max (MJ/kg)', 'Water usage max (l/kg)', 
-                                'Toxicity', 'Companionality'
-                            ]
-                            
-                            # Remove already applied filters (except Bandgap which is always applied)
-                            available_filters = [f for f in all_filters if f not in st.session_state.filters or f == 'Bandgap']
+                        st.subheader("📊 Second Graph")
+                        
+                        x_col_2 = st.session_state.second_graph_x
+                        y_col_2 = st.session_state.second_graph_y
+                        
+                        # Re-filter the data with all applied filters (from first graph + two new filters)
+                        filtered_df_2 = filter_dataframe(df, st.session_state.filters)
+                        
+                        if not filtered_df_2.empty:
+                            st.success(f"🔄 {len(filtered_df_2)} materials match all filters")
                             
                             cols = st.columns(2)
-                            additional_filter_values = {}
+                            with cols[0]:
+                                log_x_2 = st.checkbox(f"Log scale X-axis ({x_col_2})", key="log_x_2")
+                            with cols[1]:
+                                log_y_2 = st.checkbox(f"Log scale Y-axis ({y_col_2})", key="log_y_2")
                             
-                            for idx, filter_name in enumerate(available_filters):
-                                col_idx = idx % 2
-                                with cols[col_idx]:
-                                    filter_min = float(df[filter_name].min())
-                                    filter_max = float(df[filter_name].max())
-                                    
-                                    filter_range = st.slider(
-                                        filter_name,
-                                        filter_min,
-                                        filter_max,
-                                        (filter_min, filter_max),
-                                        key=f"additional_{filter_name}"
-                                    )
-                                    additional_filter_values[filter_name] = filter_range
+                            with st.expander("🎨 Customization Options - Second Graph"):
+                                plot_title_2 = st.text_input("Plot Title", f"{x_col_2} vs {y_col_2}", key="plot_title_2")
                             
-                            if st.button("Apply Additional Filters", key="apply_additional_filters"):
-                                st.session_state.filters.update(additional_filter_values)
-                                st.success("Additional filters applied!")
-                                st.rerun()
-                    
-                    # Data table
-                    with st.expander("📋 View Data"):
-                        st.dataframe(filtered_df[[x_col, y_col, "Name"]].sort_values(y_col, ascending=False))
-                    
-                    # Download
-                    st.download_button(
-                        label="📥 Download Analysis Data",
-                        data=filtered_df.to_csv(index=False).encode('utf-8'),
-                        file_name="custom_analysis.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.warning("No materials match the current filters. Please adjust your criteria.")
+                            p2 = create_professional_plot(
+                                filtered_df_2, x_col_2, y_col_2, plot_title_2, x_col_2, y_col_2, log_x_2, log_y_2
+                            )
+                            
+                            # Set axis ranges to match filtered data with padding
+                            from bokeh.models import Range1d
+                            if not log_x_2:
+                                x_min, x_max = filtered_df_2[x_col_2].min(), filtered_df_2[x_col_2].max()
+                                x_padding = (x_max - x_min) * 0.05
+                                p2.x_range = Range1d(x_min - x_padding, x_max + x_padding)
+                            if not log_y_2:
+                                y_min, y_max = filtered_df_2[y_col_2].min(), filtered_df_2[y_col_2].max()
+                                y_padding = (y_max - y_min) * 0.05
+                                p2.y_range = Range1d(y_min - y_padding, y_max + y_padding)
+                            
+                            st.bokeh_chart(p2, use_container_width=True)
+                            
+                            # Data table for second graph
+                            with st.expander("📋 View Data - Second Graph"):
+                                st.dataframe(filtered_df_2[[x_col_2, y_col_2, "Name"]].sort_values(y_col_2, ascending=False))
+                        else:
+                            st.warning("No materials match all the filters. Please adjust your criteria.")
+                
+                # Data table
+                with st.expander("📋 View Data"):
+                    st.dataframe(filtered_df[[x_col, y_col, "Name"]].sort_values(y_col, ascending=False))
+                
+                # Download
+                st.download_button(
+                    label="📥 Download Analysis Data",
+                    data=filtered_df.to_csv(index=False).encode('utf-8'),
+                    file_name="custom_analysis.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.warning("No materials match the current filters. Please adjust your criteria.")
 
     elif selected_page == "MCDM Analysis":
         st.title("📊 Multi-Criteria Decision Making")
@@ -758,5 +876,4 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()
