@@ -321,7 +321,6 @@ def main():
         # --- Hover tool ---
         hover = HoverTool(
             tooltips=[
-                ("Name", "@Name"),
                 ("Bandgap (eV)", "@Bandgap")
             ]
         )
@@ -769,3 +768,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
