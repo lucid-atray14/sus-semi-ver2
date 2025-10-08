@@ -588,7 +588,7 @@ def main():
                     # Second Graph - only show after filters are chosen
                     if 'show_second_graph' in st.session_state and st.session_state.show_second_graph:
                         st.markdown("---")
-                        st.subheader("Second Graph")
+                        st.subheader("Second Plot")
                         
                         x_col_2 = st.session_state.second_graph_x
                         y_col_2 = st.session_state.second_graph_y
@@ -679,11 +679,11 @@ def main():
                                 'Weight': weights,
                                 'Direction': ['Maximize' if d == 1 else 'Minimize' for d in available_criteria.values()]
                             }).sort_values('Weight', ascending=False)
-                                st.subheader("Criteria Weights")
-                                st.dataframe(
+                            st.subheader("Criteria Weights")
+                            st.dataframe(
                                     weights_df.style.format({'Weight': '{:.2%}'}),
                                     use_container_width=True
-                                )
+                            )
                             
                             # Run analysis
                             if st.button("Run MCDM Analysis", type="primary", key="run_mcdm_custom"):
@@ -761,6 +761,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
