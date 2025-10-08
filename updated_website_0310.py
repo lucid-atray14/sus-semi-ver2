@@ -448,10 +448,7 @@ def main():
                     st.warning("Please select an additional filter and set its range.")
         
         if st.session_state.filters:  # Check if any filters exist
-            # Plot configuration - first graph is always Bandgap vs selected filter
-            st.subheader("📊 Plot Configuration")
-            
-            # Get the selected filter from session state (the one that was chosen initially)
+            st.subheader("First plot")
             initial_filters = [k for k in st.session_state.filters.keys() if k != 'Bandgap']
             
             if initial_filters:
@@ -480,7 +477,7 @@ def main():
                 st.success(f"🔄 {len(filtered_df)} materials match current filters")
                 
                 # Advanced options
-                with st.expander("🎨 Customization Options"):
+                with st.expander("Customization Options"):
                     plot_title = st.text_input("Plot Title", f"{x_col} vs {y_col}")
                 
                 # Create and display plot
@@ -591,7 +588,7 @@ def main():
                     # Second Graph - only show after filters are chosen
                     if 'show_second_graph' in st.session_state and st.session_state.show_second_graph:
                         st.markdown("---")
-                        st.subheader("📊 Second Graph")
+                        st.subheader("Second Graph")
                         
                         x_col_2 = st.session_state.second_graph_x
                         y_col_2 = st.session_state.second_graph_y
@@ -608,7 +605,7 @@ def main():
                             with cols[1]:
                                 log_y_2 = st.checkbox(f"Log scale Y-axis ({y_col_2})", key="log_y_2")
                             
-                            with st.expander("🎨 Customization Options - Second Graph"):
+                            with st.expander("Customization Options - Second Graph"):
                                 plot_title_2 = st.text_input("Plot Title", f"{x_col_2} vs {y_col_2}", key="plot_title_2")
                             
                             # Create and display plot
@@ -682,15 +679,14 @@ def main():
                                 'Weight': weights,
                                 'Direction': ['Maximize' if d == 1 else 'Minimize' for d in available_criteria.values()]
                             }).sort_values('Weight', ascending=False)
-                            
-                            with st.expander("View Weights"):
+                                st.subheader("Criteria Weights")
                                 st.dataframe(
                                     weights_df.style.format({'Weight': '{:.2%}'}),
                                     use_container_width=True
                                 )
                             
                             # Run analysis
-                            if st.button("🚀 Run MCDM Analysis", type="primary", key="run_mcdm_custom"):
+                            if st.button("Run MCDM Analysis", type="primary", key="run_mcdm_custom"):
                                 with st.spinner("Performing analysis..."):
                                     matrix = filtered_df_2[list(available_criteria.keys())].values
                                     types = np.array([available_criteria[k] for k in available_criteria])
@@ -713,7 +709,7 @@ def main():
                                         }).sort_values('Rank')
                                 
                                 # Display results
-                                st.subheader("📋 MCDM Results")
+                                st.subheader("MCDM Results")
                                 st.dataframe(
                                     results.style.format({
                                         'Score': '{:.2f}',
@@ -724,7 +720,7 @@ def main():
                                 )
                                 
                                 # Visualize top materials
-                                st.subheader("🏆 Top Materials")
+                                st.subheader("Top Materials")
                                 top_n = min(3, len(results))
                                 top_materials = results.head(top_n)['Material'].tolist()
                                 
@@ -765,6 +761,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
