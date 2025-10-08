@@ -11,6 +11,8 @@ from io import BytesIO
 from bokeh.palettes import Category10
 from bokeh.models import NumeralTickFormatter
 from bokeh.models import LogScale, Range1d, LinearScale
+from scipy.stats import ks_2samp
+from bokeh.transform import jitter, factor_cmap
 
 # Custom CSS for styling
 def set_custom_style():
@@ -115,7 +117,7 @@ def create_professional_plot(df, x_col, y_col, title, x_label, y_label, log_x=Fa
     
     # Professional color palette
     primary_color = "#3498db"
-    highlight_color = "#e74c3c"
+    highlight_color = "#c5301f"
     
     # Create the figure with dynamic axis types
     p = figure(
@@ -201,28 +203,28 @@ def main():
     st.sidebar.markdown("---")
     selected_page = st.sidebar.radio(
         "Navigation Menu", 
-        ["Home", "Bandgap Analysis", "Custom Analysis", "MCDM Analysis"],
-        captions=["Welcome page", "Bandgap properties", "Custom relationships", "Decision making"]
+        ["Home", "Bandgap Information", "Decision-making Assistant"],
+        captions=["Welcome page", "Commonly researched semiconductors", "Multi-criteria decision making tool"]
     )
     
     # Add footer
     st.markdown("""
     <div class="footer">
-        Material Analysis Platform © 2025 | v2.0 | Developed by HERAWS
+        Semiconductor Database © 2025 | v2.0 | Developed by HERAWS
     </div>
     """, unsafe_allow_html=True)
 
     if selected_page == "Home":
-        st.title("Material Properties Analysis Platform")
+        st.title("Semiconductor Database")
         
         cols = st.columns(2)
         with cols[0]:
             st.markdown("""
             ### 🔍 About This Tool
-            This interactive platform enables comprehensive analysis of material properties with:
-            - **Bandgap-specific** visualizations
-            - **Custom relationship** exploration
-            - **Multi-criteria** decision making
+            This interactive platform enables comprehensive analysis of environmental impacts and sustainability of semiconductors with:
+            - **Extensive database** on ESG scores, CO₂ footprints, and more
+            - **Visualizations** to explore relationships between parameters
+            - **Multi-criteria** decision making tools (TOPSIS, PROMETHEE)
             - **Export capabilities** for further analysis
             """)
             
@@ -232,9 +234,9 @@ def main():
             1. Select an analysis page from the sidebar
             2. Configure your filters and parameters
             3. Visualize the relationships
-            4. Download results for reporting
+            4. Download results for further use
             
-            **Pro Tip:** Use the MCDM analysis for comprehensive material evaluation.
+            **Pro Tip:** Use the MCDM analysis for ranking the most promising semiconductors.
             """)
         
         st.markdown("---")
@@ -248,13 +250,13 @@ def main():
             with cols[2]:
                 st.metric("Production Range", f"{df['Production (ton)'].min():.1f} - {df['Production (ton)'].max():.1f} tons")
         
-    elif selected_page == "Bandgap Analysis":
-        st.title("📈 Bandgap Analysis")
-        st.markdown("Analyze material properties with respect to bandgap values")
+    elif selected_page == "Bandgap Information":
+        st.title("Bandgap Information")
+        st.markdown("Most commonly researched semiconductors and their band gap range.")
 
         # Filters section at the top in expandable containers
         with st.expander("🔍 Filter Settings", expanded=True):
-            cols = st.columns(3)
+            cols = st.columns(2)
             
             with cols[0]:
                 st.markdown("**Material Properties**")
@@ -263,27 +265,9 @@ def main():
                     [col for col in df1.columns if col not in ['Name', 'Bandgap']],
                     help="Select the property to plot against bandgap"
                 )
-                
+
             with cols[1]:
-                st.markdown("**Range Filters**")
-                esg_range = st.slider(
-                    "ESG Score Range", 
-                    0.0, 4.0, (0.0, 3.5), 0.1,
-                    help="Filter materials by ESG score range"
-                )
-                toxicity_range = st.slider(
-                    "Toxicity Level", 
-                    0.0, 4.0, (0.0, 3.0), 1.0,
-                    help="Filter materials by toxicity level"
-                )
-                
-            with cols[2]:
                 st.markdown("**Material Selection**")
-                co2_range = st.slider(
-                    "CO₂ Footprint (kg/kg)", 
-                    0.0, 15000.0, (0.0, 5000.0),
-                    help="Filter materials by CO₂ footprint"
-                )
             
                 specified_names = [
                     "TiO2","ZnO","CdS","MoS2","SnO2","ZnS","WO3","CuO","Cu2O","Si"
@@ -295,105 +279,76 @@ def main():
                     help="Focus on specific materials of interest"
                 )
 
-        # Apply filters
-        filters = {
-            "ESG Score": esg_range,
-            "Toxicity": toxicity_range,
-            "CO2 footprint max (kg/kg)": co2_range
-        }
-        
         # Process data
         name_colors = {name: Category10[len(specified_names)][i] for i, name in enumerate(specified_names)} 
         df1['color'] = df1['Name'].map(name_colors)
-        filtered_df = filter_dataframe(df1, filters, selected_names if selected_names else None)
+        filtered_df = df1[df1['Name'].isin(selected_names)] if selected_names else df1
         
         # Plot section below filters
         st.markdown("---")
         st.markdown(f"**Analysis Results ({len(filtered_df)} materials)**")
-        
-        if len(filtered_df) == 0:
-            st.warning("⚠️ No materials match your filters. Please adjust your criteria.")
-        else:
-            # Create the plot with maximum width
-            p = figure(
-                title=f"Bandgap vs {y_col}",
-                tools="pan,wheel_zoom,box_zoom,reset,save",
-                x_axis_label="Bandgap (eV)",
-                y_axis_label=y_col,
-                width=1000,
-                height=600,
-                sizing_mode="stretch_width"
-            )
-            
-            # Plot data
-            source = ColumnDataSource(filtered_df)
-            p.circle(
-                x="Bandgap", 
-                y=y_col, 
-                source=source, 
-                size=12,
-                color='color', 
-                alpha=0.7,
-                legend_field="Name"
-            )
-            
-            # Calculate y-axis range
-            y_min = filtered_df[y_col].min() * 0.9
-            y_max = filtered_df[y_col].max() * 1.1
-            
-            # Add bandgap regions
-            regions = [
-                (0, 1.6, "#f1c40f", "Infrared (0-1.6 eV)"),
-                (1.6, 3.26, "#3498db", "Visible (1.6-3.26 eV)"),
-                (3.26, 20, "#2ecc71", "UV (>3.26 eV)")
-            ]
-            
-            for left, right, color, label in regions:
-                p.quad(
-                    top=y_max,
-                    bottom=y_min,
-                    left=left,
-                    right=right,
-                    color=color,
-                    alpha=0.1,
-                    legend_label=label
-                )
-            
-            # Add hover and legend
-            hover = HoverTool(tooltips=[
-                ("Name", "@Name")
-            ])
-            p.add_tools(hover)
-            p.legend.location = "top_right"
-            p.legend.click_policy = "mute"
-            p.legend.label_text_font_size = "12pt"
-            
-            # Display plot
-            st.bokeh_chart(p, use_container_width=True)
-            
-            # Data download
-            st.download_button(
-                label="📥 Download Analysis Data",
-                data=filtered_df.to_csv(index=False).encode('utf-8'),
-                file_name="bandgap_analysis.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-            
-        # Bandgap reference (always show)
-        with st.expander("ℹ️ Bandgap Reference", expanded=False):
-            st.markdown("""
-            **Bandgap Energy Ranges:**
-            - **Infrared**: <1.6 eV (Yellow)
-            - **Visible**: 1.6-3.26 eV (Blue)
-            - **Ultraviolet**: >3.26 eV (Green)
-            
-            *The shaded regions represent these energy ranges.*
-            """)
 
-    elif selected_page == "Custom Analysis":
-        st.title("🔍 Custom Analysis")
-        st.markdown("Explore relationships between any material properties")
+        source = ColumnDataSource(filtered_df)
+        
+        # Optional: Example to compute stats if you have only two groups
+        unique_names = filtered_df["Name"].unique()
+        if len(unique_names) == 2:
+            group1 = filtered_df.loc[filtered_df["Name"] == unique_names[0], "Bandgap"]
+            group2 = filtered_df.loc[filtered_df["Name"] == unique_names[1], "Bandgap"]
+            stat, pval = ks_2samp(group1, group2)
+            median1, iqr1 = np.median(group1), np.percentile(group1, 75)-np.percentile(group1, 25)
+            median2, iqr2 = np.median(group2), np.percentile(group2, 75)-np.percentile(group2, 25)
+        else:
+            pval = None
+        
+        # --- Plot setup ---
+        p = figure(
+            x_range=filtered_df["Name"].unique().tolist(),
+            width=600, height=500,
+            toolbar_location=None,
+            title=None
+        )
+        
+        # --- Scatter points with jitter for better visibility ---
+        p.circle(
+            x=jitter("Name", width=0.3, range=p.x_range),
+            y="Bandgap",
+            source=source,
+            size=8, alpha=0.8,
+            color="#66c2a5"
+        )
+        
+        # --- Hover tool ---
+        hover = HoverTool(
+            tooltips=[
+                ("Name", "@Name"),
+                ("Bandgap (eV)", "@Bandgap")
+            ]
+        )
+        p.add_tools(hover)
+        
+        # --- Aesthetics ---
+        p.xaxis.axis_label = "Semiconductor"
+        p.yaxis.axis_label = "Bandgap (eV)"
+        p.xgrid.visible = False
+        p.ygrid.visible = True
+        p.outline_line_color = None
+        
+        st.bokeh_chart(p, use_container_width=True)
+        
+        # Data download
+        st.download_button(
+            label="📥 Download Analysis Data",
+            data=filtered_df.to_csv(index=False).encode('utf-8'),
+            file_name="bandgap_analysis.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    
+
+    elif selected_page == "Decision-making Assistant":
+        st.title("Decision-making Assistant")
+        st.markdown("Facilitate semiconductor selection with advanced filtering and visualization")
         
         # Initialize session state
         if 'filters' not in st.session_state:
@@ -403,7 +358,9 @@ def main():
         if 'initial_filter_name' not in st.session_state:
             st.session_state.initial_filter_name = None
         if 'second_graph_filters' not in st.session_state:
-            st.session_state.second_graph_filters = set()
+            st.session_state.second_graph_filters = {}
+        if 'initial_filters_only' not in st.session_state:
+            st.session_state.initial_filters_only = {}
         
         with st.expander("🔧 Filter Settings", expanded=True):
             cols = st.columns(2)
@@ -481,9 +438,14 @@ def main():
                         "Bandgap": bandgap_range,
                         selected_filter: filter_range
                     }
+                    st.session_state.initial_filters_only = {
+                        "Bandgap": bandgap_range,
+                        selected_filter: filter_range
+                    }
                     st.session_state.initial_filter_name = selected_filter
                     st.session_state.show_additional_filters = True
                     st.session_state.show_second_graph = False  # Reset second graph
+                    st.session_state.second_graph_filters = {}
                     st.success("Initial filters applied!")
                     st.rerun()
                 else:
@@ -515,8 +477,8 @@ def main():
                     y_col = st.selectbox("Y-Axis", [col for col in df.columns if col not in ['Name', x_col]])
                     log_y = st.checkbox(f"Log scale Y-axis")
             
-            # Apply filters and create plot
-            filtered_df = filter_dataframe(df, st.session_state.filters)
+            # Apply filters and create plot - use only initial filters for first graph
+            filtered_df = filter_dataframe(df, st.session_state.initial_filters_only)
             
             if not filtered_df.empty:
                 st.success(f"🔄 {len(filtered_df)} materials match current filters")
@@ -525,24 +487,10 @@ def main():
                 with st.expander("🎨 Customization Options"):
                     plot_title = st.text_input("Plot Title", f"{x_col} vs {y_col}")
                 
-                # Create professional plot with random highlighting
+                # Create and display plot
                 p = create_professional_plot(
                     filtered_df, x_col, y_col, plot_title, x_col, y_col, log_x, log_y
                 )
-                
-                # Force axis ranges to match filtered data with padding (only for linear scales)
-                from bokeh.models import Range1d
-                
-                if not log_x:
-                    x_min, x_max = float(filtered_df[x_col].min()), float(filtered_df[x_col].max())
-                    x_padding = max((x_max - x_min) * 0.05, 0.01)
-                    p.x_range = Range1d(start=x_min - x_padding, end=x_max + x_padding)
-                    
-                if not log_y:
-                    y_min, y_max = float(filtered_df[y_col].min()), float(filtered_df[y_col].max())
-                    y_padding = max((y_max - y_min) * 0.05, 0.01)
-                    p.y_range = Range1d(start=y_min - y_padding, end=y_max + y_padding)
-                
                 st.bokeh_chart(p, use_container_width=True)
                 
                 # Show additional filters after graph is drawn
@@ -556,7 +504,7 @@ def main():
                             'Reserve (ton)', 'Production (ton)', 'HHI (USGS)',
                             'ESG Score', 'CO2 footprint max (kg/kg)', 
                             'Embodied energy max (MJ/kg)', 'Water usage max (l/kg)', 
-                            'Toxicity', 'Companionality', 'Bandgap'
+                            'Toxicity', 'Companionality'
                         ]
                         
                         # Only exclude the initial filter that was already applied, keep everything else available
@@ -629,20 +577,18 @@ def main():
                             submit_button = st.form_submit_button("Create Second Graph")
                         
                         if submit_button and filter_1 and filter_2:
-                            # Remove old second graph filters from session state
-                            for old_filter in st.session_state.second_graph_filters:
-                                if old_filter in st.session_state.filters:
-                                    del st.session_state.filters[old_filter]
-                            
-                            # Apply these two new filters
-                            st.session_state.filters.update({
+                            # Store second graph filters separately
+                            st.session_state.second_graph_filters = {
                                 filter_1: filter_1_range,
                                 filter_2: filter_2_range
-                            })
+                            }
+                            
+                            # Combine initial filters with second graph filters for the second graph only
+                            st.session_state.filters = {**st.session_state.initial_filters_only, **st.session_state.second_graph_filters}
+                            
                             st.session_state.show_second_graph = True
                             st.session_state.second_graph_x = filter_1
                             st.session_state.second_graph_y = filter_2
-                            st.session_state.second_graph_filters = {filter_1, filter_2}
                             st.success("Second graph filters applied!")
                             st.rerun()
                     
@@ -669,26 +615,141 @@ def main():
                             with st.expander("🎨 Customization Options - Second Graph"):
                                 plot_title_2 = st.text_input("Plot Title", f"{x_col_2} vs {y_col_2}", key="plot_title_2")
                             
+                            # Create and display plot
                             p2 = create_professional_plot(
                                 filtered_df_2, x_col_2, y_col_2, plot_title_2, x_col_2, y_col_2, log_x_2, log_y_2
                             )
-                            
-                            # Set axis ranges to match filtered data with padding
-                            from bokeh.models import Range1d
-                            if not log_x_2:
-                                x_min, x_max = filtered_df_2[x_col_2].min(), filtered_df_2[x_col_2].max()
-                                x_padding = (x_max - x_min) * 0.05
-                                p2.x_range = Range1d(x_min - x_padding, x_max + x_padding)
-                            if not log_y_2:
-                                y_min, y_max = filtered_df_2[y_col_2].min(), filtered_df_2[y_col_2].max()
-                                y_padding = (y_max - y_min) * 0.05
-                                p2.y_range = Range1d(y_min - y_padding, y_max + y_padding)
-                            
                             st.bokeh_chart(p2, use_container_width=True)
                             
                             # Data table for second graph
                             with st.expander("📋 View Data - Second Graph"):
                                 st.dataframe(filtered_df_2[[x_col_2, y_col_2, "Name"]].sort_values(y_col_2, ascending=False))
+                            
+                            # MCDM Analysis Section
+                            st.markdown("---")
+                            st.subheader("📊 Multi-Criteria Decision Making")
+                            st.info(f"Analyze the {len(filtered_df_2)} filtered materials using TOPSIS or PROMETHEE methods")
+                            
+                            cols_mcdm = st.columns(2)
+                            with cols_mcdm[0]:
+                                mcdm_method = st.selectbox(
+                                    "Method",
+                                    ["TOPSIS", "PROMETHEE"],
+                                    help="TOPSIS: Technique for Order Preference by Similarity to Ideal Solution\nPROMETHEE: Preference Ranking Organization Method for Enrichment Evaluation",
+                                    key="mcdm_method_custom"
+                                )
+                            with cols_mcdm[1]:
+                                if mcdm_method == "TOPSIS":
+                                    weighting_method = st.radio(
+                                        "Weighting",
+                                        ["Entropy Weighting", "Manual Weights"],
+                                        horizontal=True,
+                                        key="mcdm_weighting_custom"
+                                    )
+                            
+                            # Criteria selection
+                            criteria_options = {
+                                'Reserve (ton)': 1, 'Production (ton)': 1, 'HHI (USGS)': -1,
+                                'ESG Score': -1, 'CO2 footprint max (kg/kg)': -1,
+                                'Embodied energy max (MJ/kg)': -1, 'Water usage max (l/kg)': -1,
+                                'Toxicity': -1, 'Companionality': -1
+                            }
+                            available_criteria = {k: v for k, v in criteria_options.items() if k in filtered_df_2.columns}
+                            
+                            # Weight assignment
+                            if mcdm_method == "TOPSIS" and weighting_method == "Entropy Weighting":
+                                weights = entropy_weights(filtered_df_2[list(available_criteria.keys())].values)
+                            else:
+                                st.markdown("**📊 Criteria Weights** - Assign importance (0–5 scale):")
+                                
+                                weights = []
+                                cols_weights = st.columns(len(available_criteria))
+                                for i, (col, direction) in enumerate(available_criteria.items()):
+                                    with cols_weights[i]:
+                                        weight = st.slider(
+                                            f"{col} ({'Max' if direction == 1 else 'Min'})",
+                                            0, 5, 3,
+                                            key=f"weight_custom_{col}"
+                                        )
+                                        weights.append(weight)
+                                
+                                # Normalize weights
+                                if sum(weights) == 0:
+                                    st.warning("All weights set to 0 - using equal weights instead")
+                                    weights = np.ones(len(weights)) / len(weights)
+                                else:
+                                    weights = np.array(weights) / sum(weights)
+                            
+                            # Display weights
+                            weights_df = pd.DataFrame({
+                                'Criterion': list(available_criteria.keys()),
+                                'Weight': weights,
+                                'Direction': ['Maximize' if d == 1 else 'Minimize' for d in available_criteria.values()]
+                            }).sort_values('Weight', ascending=False)
+                            
+                            with st.expander("View Weights"):
+                                st.dataframe(
+                                    weights_df.style.format({'Weight': '{:.2%}'}),
+                                    use_container_width=True
+                                )
+                            
+                            # Run analysis
+                            if st.button("🚀 Run MCDM Analysis", type="primary", key="run_mcdm_custom"):
+                                with st.spinner("Performing analysis..."):
+                                    matrix = filtered_df_2[list(available_criteria.keys())].values
+                                    types = np.array([available_criteria[k] for k in available_criteria])
+                                    
+                                    if mcdm_method == "TOPSIS":
+                                        scores = run_topsis(matrix, weights, types)
+                                        ranks = rankdata(scores, reverse=True).astype(int)
+                                        results = pd.DataFrame({
+                                            'Material': filtered_df_2['Name'].values,
+                                            'Score': scores,
+                                            'Rank': ranks
+                                        }).sort_values('Rank')
+                                    else:
+                                        flows = run_promethee(matrix, weights, types)
+                                        ranks = rankdata(flows, reverse=True).astype(int)
+                                        results = pd.DataFrame({
+                                            'Material': filtered_df_2['Name'].values,
+                                            'Net Flow': flows,
+                                            'Rank': ranks
+                                        }).sort_values('Rank')
+                                
+                                # Display results
+                                st.subheader("📋 MCDM Results")
+                                st.dataframe(
+                                    results.style.format({
+                                        'Score': '{:.2f}',
+                                        'Net Flow': '{:.2f}',
+                                        'Rank': '{:.0f}'
+                                    }),
+                                    use_container_width=True
+                                )
+                                
+                                # Visualize top materials
+                                st.subheader("🏆 Top Materials")
+                                top_n = min(3, len(results))
+                                top_materials = results.head(top_n)['Material'].tolist()
+                                
+                                cols_top = st.columns(top_n)
+                                for i, material in enumerate(top_materials):
+                                    with cols_top[i]:
+                                        st.metric(
+                                            label=f"Rank #{int(results.iloc[i]['Rank'])}",
+                                            value=material,
+                                            help=f"Score: {results.iloc[i]['Score'] if 'Score' in results.columns else results.iloc[i]['Net Flow']:.4f}"
+                                        )
+                                
+                                # Download results
+                                excel_data = create_full_output(filtered_df_2, results, weights_df)
+                                st.download_button(
+                                    label="📥 Download Full MCDM Report",
+                                    data=excel_data,
+                                    file_name=f"custom_analysis_mcdm_{mcdm_method}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key="download_mcdm_custom"
+                                )
                         else:
                             st.warning("No materials match all the filters. Please adjust your criteria.")
                 
@@ -705,189 +766,6 @@ def main():
                 )
             else:
                 st.warning("No materials match the current filters. Please adjust your criteria.")
-
-    elif selected_page == "MCDM Analysis":
-        st.title("📊 Multi-Criteria Decision Making")
-        st.markdown("Evaluate materials using TOPSIS or PROMETHEE methods")
-    
-        # Initialize session state
-        if 'filters' not in st.session_state:
-            st.session_state.filters = {}
-            st.session_state.bandgap_selected = False
-    
-        with st.expander("🔧 Filter Settings", expanded=True):
-            cols = st.columns(2)
-    
-            with cols[0]:
-                st.subheader("Bandgap Selection")
-                fixed_width = st.checkbox("Fixed Width (±0.1 eV)", True, key="mcdm_bandgap")
-    
-                if fixed_width:
-                    center = st.number_input(
-                        "Center Value (eV)",
-                        min_value=0.0, max_value=20.0, value=2.0, step=0.1,
-                        key="mcdm_center"
-                    )
-                    bandgap_range = (round(center - 0.1, 1), round(center + 0.1, 1))
-                else:
-                    bandgap_range = st.slider("Custom Range (eV)", 0.0, 20.0, (0.0, 3.0), 0.1, key="mcdm_range")
-    
-                if st.button("Apply Bandgap Filter", key="mcdm_bandgap_filter"):
-                    st.session_state.filters["Bandgap"] = bandgap_range
-                    st.session_state.bandgap_selected = True
-                    st.success("Bandgap filter applied!")
-    
-            with cols[1]:
-                if st.session_state.get('bandgap_selected', False):
-                    st.subheader("Additional Filters")
-                    esg_range = st.slider("ESG Score", 0.0, 5.0, (0.0, 3.5), 0.1, key="mcdm_esg")
-                    toxicity_range = st.slider("Toxicity", 0.0, 4.0, (0.0, 3.0), 1.0, key="mcdm_toxicity")
-    
-                    production_range = st.slider(
-                        "Production (tons)",
-                        float(df['Production (ton)'].min()),
-                        float(df['Production (ton)'].max()),
-                        (float(df['Production (ton)'].min()), float(df['Production (ton)'].max())),
-                        step=1.0,
-                        key="mcdm_production"
-                    )
-    
-                    st.session_state.filters.update({
-                        "ESG Score": esg_range,
-                        "Toxicity": toxicity_range,
-                        "Production (ton)": production_range
-                    })
-    
-        if st.session_state.get('bandgap_selected', False):
-            # MCDM configuration
-            st.subheader("⚖️ Analysis Configuration")
-    
-            cols = st.columns(2)
-            with cols[0]:
-                mcdm_method = st.selectbox(
-                    "Method",
-                    ["TOPSIS", "PROMETHEE"],
-                    help="TOPSIS: Technique for Order Preference by Similarity to Ideal Solution\nPROMETHEE: Preference Ranking Organization Method for Enrichment Evaluation"
-                )
-            with cols[1]:
-                if mcdm_method == "TOPSIS":
-                    weighting_method = st.radio(
-                        "Weighting",
-                        ["Entropy Weighting", "Manual Weights"],
-                        horizontal=True
-                    )
-    
-            # Get filtered data
-            filtered_df = filter_dataframe(df, st.session_state.filters)
-    
-            if not filtered_df.empty:
-                st.success(f"🔄 {len(filtered_df)} materials available for analysis")
-    
-                # Criteria selection
-                criteria_options = {
-                    'Reserve (ton)': 1, 'Production (ton)': 1, 'HHI (USGS)': -1,
-                    'ESG Score': -1, 'CO2 footprint max (kg/kg)': -1,
-                    'Embodied energy max (MJ/kg)': -1, 'Water usage max (l/kg)': -1,
-                    'Toxicity': -1, 'Companionality': -1
-                }
-                available_criteria = {k: v for k, v in criteria_options.items() if k in filtered_df.columns}
-    
-                # Weight assignment
-                if mcdm_method == "TOPSIS" and weighting_method == "Entropy Weighting":
-                    weights = entropy_weights(filtered_df[list(available_criteria.keys())].values)
-                else:
-                    st.subheader("📊 Criteria Weights")
-                    st.markdown("Assign importance to each criterion (0–5 scale):")
-    
-                    weights = []
-                    cols = st.columns(len(available_criteria))
-                    for i, (col, direction) in enumerate(available_criteria.items()):
-                        with cols[i]:
-                            weight = st.slider(
-                                f"{col} ({'Max' if direction == 1 else 'Min'})",
-                                0, 5, 3,
-                                key=f"weight_{col}"
-                            )
-                            weights.append(weight)
-    
-                    # Normalize weights
-                    if sum(weights) == 0:
-                        st.warning("All weights set to 0 - using equal weights instead")
-                        weights = np.ones(len(weights)) / len(weights)
-                    else:
-                        weights = np.array(weights) / sum(weights)
-    
-                # Display weights
-                weights_df = pd.DataFrame({
-                    'Criterion': list(available_criteria.keys()),
-                    'Weight': weights,
-                    'Direction': ['Maximize' if d == 1 else 'Minimize' for d in available_criteria.values()]
-                }).sort_values('Weight', ascending=False)
-    
-                st.dataframe(
-                    weights_df.style.format({'Weight': '{:.2%}'}),
-                    use_container_width=True
-                )
-    
-                # Run analysis
-                if st.button("🚀 Run Analysis", type="primary"):
-                    with st.spinner("Performing analysis..."):
-                        matrix = filtered_df[list(available_criteria.keys())].values
-                        types = np.array([available_criteria[k] for k in available_criteria])
-    
-                        if mcdm_method == "TOPSIS":
-                            scores = run_topsis(matrix, weights, types)
-                            ranks = rankdata(scores, reverse=True).astype(int)  # Ensure integer ranks
-                            results = pd.DataFrame({
-                                'Material': filtered_df['Name'],
-                                'Score': scores,
-                                'Rank': ranks
-                            }).sort_values('Rank')
-                        else:
-                            flows = run_promethee(matrix, weights, types)
-                            ranks = rankdata(flows, reverse=True).astype(int)  # Already correctly cast
-                            results = pd.DataFrame({
-                                'Material': filtered_df['Name'],
-                                'Net Flow': flows,
-                                'Rank': ranks
-                            }).sort_values('Rank')
-    
-                    # Display results
-                    st.subheader("📋 Results")
-                    st.dataframe(
-                        results.style.format({
-                            'Score': '{:.2f}',
-                            'Net Flow': '{:.2f}',
-                            'Rank': '{:.0f}'  # Format rank as integer
-                        }),
-                        use_container_width=True
-                    )
-    
-                    # Visualize top materials
-                    st.subheader("🏆 Top Materials")
-                    top_n = min(3, len(results))
-                    top_materials = results.head(top_n)['Material'].tolist()
-    
-                    cols = st.columns(top_n)
-                    for i, material in enumerate(top_materials):
-                        with cols[i]:
-                            st.metric(
-                                label=f"Rank #{int(results.iloc[i]['Rank'])}",  # Show integer rank
-                                value=material,
-                                help=f"Score: {results.iloc[i]['Score'] if 'Score' in results.columns else results.iloc[i]['Net Flow']:.4f}"
-                            )
-    
-                    # Download results
-                    excel_data = create_full_output(filtered_df, results, weights_df)
-                    st.download_button(
-                        label="📥 Download Full Report",
-                        data=excel_data,
-                        file_name=f"material_analysis_{mcdm_method}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-            else:
-                st.warning("No materials match the current filters. Please adjust your criteria.")
-
 
 if __name__ == "__main__":
     main()
