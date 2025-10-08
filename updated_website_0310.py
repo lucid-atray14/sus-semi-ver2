@@ -280,17 +280,11 @@ def main():
                 )
     
         # Process data with distinct colors
-        custom_colors = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", 
-                         "#ffff33", "#a65628", "#f781bf", "#999999", "#66c2a5"]
-        name_colors = {name: custom_colors[i % len(custom_colors)] for i, name in enumerate(specified_names)}
-        
-        df1['color'] = df1['Name'].map(name_colors)
         filtered_df = df1[df1['Name'].isin(selected_names)] if selected_names else df1
         
         # Calculate median for each material
         median_data = filtered_df.groupby('Name')['Bandgap'].median().reset_index()
         median_data.columns = ['Name', 'Median_Bandgap']
-        median_data['color'] = median_data['Name'].map(name_colors)
         
         # Plot section below filters
         st.markdown("---")
@@ -313,28 +307,11 @@ def main():
             source=source,
             size=10, 
             alpha=0.9,
-            color="color",
-            legend_field="Name"
+            color="#66c2a5"
         )
-        
-        # --- Add median lines for each material ---
-        for _, row in median_data.iterrows():
-            p.line(
-                x=[row['Name'], row['Name']],
-                y=[row['Median_Bandgap'], row['Median_Bandgap']],
-                line_width=40,
-                line_color=row['color'],
-                alpha=0.7,
-                line_cap="round"
-            )
         
         # --- Hover tool ---
-        hover = HoverTool(
-            tooltips=[
-                ("Material", "@Name"),
-                ("Bandgap (eV)", "@Bandgap")
-            ]
-        )
+        hover = HoverTool(tooltips=[("Bandgap (eV)", "@Bandgap")])
         p.add_tools(hover)
         
         # --- Legend configuration ---
@@ -788,6 +765,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
