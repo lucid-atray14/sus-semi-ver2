@@ -279,27 +279,25 @@ def main():
                     help="Focus on specific materials of interest"
                 )
 
-        # Process data
-        name_colors = {name: Category10[len(specified_names)][i] for i, name in enumerate(specified_names)} 
+        # Process data with distinct colors
+        custom_colors = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", 
+                        "#ffff33", "#a65628", "#f781bf", "#999999", "#66c2a5"]
+        name_colors = {name: custom_colors[i % len(custom_colors)] for i, name in enumerate(specified_names)}
+        
         df1['color'] = df1['Name'].map(name_colors)
         filtered_df = df1[df1['Name'].isin(selected_names)] if selected_names else df1
+        
+        # Calculate median for each material
+        median_data = filtered_df.groupby('Name')['Bandgap'].median().reset_index()
+        median_data.columns = ['Name', 'Median_Bandgap']
+        median_data['color'] = median_data['Name'].map(name_colors)
         
         # Plot section below filters
         st.markdown("---")
         st.markdown(f"**Analysis Results ({len(filtered_df)} materials)**")
 
         source = ColumnDataSource(filtered_df)
-        
-        # Optional: Example to compute stats if you have only two groups
-        unique_names = filtered_df["Name"].unique()
-        if len(unique_names) == 2:
-            group1 = filtered_df.loc[filtered_df["Name"] == unique_names[0], "Bandgap"]
-            group2 = filtered_df.loc[filtered_df["Name"] == unique_names[1], "Bandgap"]
-            stat, pval = ks_2samp(group1, group2)
-            median1, iqr1 = np.median(group1), np.percentile(group1, 75)-np.percentile(group1, 25)
-            median2, iqr2 = np.median(group2), np.percentile(group2, 75)-np.percentile(group2, 25)
-        else:
-            pval = None
+        median_source = ColumnDataSource(median_data)
         
         # --- Plot setup ---
         p = figure(
@@ -309,22 +307,41 @@ def main():
             title=None
         )
         
-        # --- Scatter points with jitter for better visibility ---
+        # --- Scatter points with jitter and color mapping ---
         p.circle(
             x=jitter("Name", width=0.3, range=p.x_range),
             y="Bandgap",
             source=source,
-            size=8, alpha=0.8,
-            color="#66c2a5"
+            size=10, 
+            alpha=0.9,
+            color="color",
+            legend_field="Name"
+        )
+        
+        # --- Add median lines ---
+        p.segment(
+            x0=[i - 0.4 for i in range(len(median_data))],
+            y0="Median_Bandgap",
+            x1=[i + 0.4 for i in range(len(median_data))],
+            y1="Median_Bandgap",
+            source=median_source,
+            line_width=3,
+            line_color="color",
+            alpha=1.0
         )
         
         # --- Hover tool ---
         hover = HoverTool(
             tooltips=[
+                ("Material", "@Name"),
                 ("Bandgap (eV)", "@Bandgap")
             ]
         )
         p.add_tools(hover)
+        
+        # --- Legend configuration ---
+        p.legend.location = "top_right"
+        p.legend.click_policy = "hide"
         
         # --- Aesthetics ---
         p.xaxis.axis_label = "Semiconductor"
@@ -335,6 +352,12 @@ def main():
         
         st.bokeh_chart(p, use_container_width=True)
         
+        # Display median statistics
+        st.markdown("### Median Bandgap Values")
+        median_display = median_data[['Name', 'Median_Bandgap']].copy()
+        median_display.columns = ['Material', 'Median Bandgap (eV)']
+        st.dataframe(median_display, use_container_width=True, hide_index=True)
+        
         # Data download
         st.download_button(
             label="📥 Download Analysis Data",
@@ -343,7 +366,6 @@ def main():
             mime="text/csv",
             use_container_width=True
         )
-    
 
     elif selected_page == "Decision-making Assistant":
         st.title("Decision-making Assistant")
@@ -768,4 +790,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
