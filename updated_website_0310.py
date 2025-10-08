@@ -253,7 +253,7 @@ def main():
     elif selected_page == "Bandgap Information":
         st.title("Bandgap Information")
         st.markdown("Most commonly researched semiconductors and their band gap range.")
-
+    
         # Filters section at the top in expandable containers
         with st.expander("🔍 Filter Settings", expanded=True):
             cols = st.columns(2)
@@ -265,7 +265,7 @@ def main():
                     [col for col in df1.columns if col not in ['Name', 'Bandgap']],
                     help="Select the property to plot against bandgap"
                 )
-
+    
             with cols[1]:
                 st.markdown("**Material Selection**")
             
@@ -278,10 +278,10 @@ def main():
                     default=["TiO2", "ZnO"],
                     help="Focus on specific materials of interest"
                 )
-
+    
         # Process data with distinct colors
         custom_colors = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", 
-                        "#ffff33", "#a65628", "#f781bf", "#999999", "#66c2a5"]
+                         "#ffff33", "#a65628", "#f781bf", "#999999", "#66c2a5"]
         name_colors = {name: custom_colors[i % len(custom_colors)] for i, name in enumerate(specified_names)}
         
         df1['color'] = df1['Name'].map(name_colors)
@@ -295,9 +295,8 @@ def main():
         # Plot section below filters
         st.markdown("---")
         st.markdown(f"**Analysis Results ({len(filtered_df)} materials)**")
-
+    
         source = ColumnDataSource(filtered_df)
-        median_source = ColumnDataSource(median_data)
         
         # --- Plot setup ---
         p = figure(
@@ -318,17 +317,16 @@ def main():
             legend_field="Name"
         )
         
-        # --- Add median lines ---
-        p.segment(
-            x0=[i - 0.4 for i in range(len(median_data))],
-            y0="Median_Bandgap",
-            x1=[i + 0.4 for i in range(len(median_data))],
-            y1="Median_Bandgap",
-            source=median_source,
-            line_width=3,
-            line_color="color",
-            alpha=1.0
-        )
+        # --- Add median lines for each material ---
+        for _, row in median_data.iterrows():
+            p.line(
+                x=[row['Name'], row['Name']],
+                y=[row['Median_Bandgap'], row['Median_Bandgap']],
+                line_width=40,
+                line_color=row['color'],
+                alpha=0.7,
+                line_cap="round"
+            )
         
         # --- Hover tool ---
         hover = HoverTool(
@@ -790,5 +788,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
